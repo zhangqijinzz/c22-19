@@ -1,3 +1,4 @@
+import { moveTiedRule } from '../../domain/ruleOrdering';
 import type { BusinessRule, ConditionGroup, PredicateCondition, RuleField, RuleProject } from '../../models/ruleModel';
 import type { WorkspacePort } from '../../viewmodels/workspacePort';
 
@@ -21,6 +22,14 @@ export class RulesViewModel {
 
   updateRule(ruleId: string, updates: Partial<Pick<BusinessRule, 'name' | 'priority' | 'result'>>): void {
     this.updateRules((rule) => rule.id === ruleId ? { ...rule, ...updates } : rule, `${this.findName(ruleId)}已更新`);
+  }
+
+  moveRule(ruleId: string, direction: -1 | 1): void {
+    const project = this.currentProject();
+    if (!project) return;
+    const rules = moveTiedRule(project.rules, ruleId, direction);
+    if (rules === project.rules) return;
+    this.workspace.commitProject({ ...project, rules }, '并列规则决胜顺序已调整');
   }
 
   removeRule(ruleId: string): void {

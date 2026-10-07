@@ -1,4 +1,5 @@
-import type { BusinessRule, PredicateCondition, RuleField } from '../../models/ruleModel';
+import { groupRulesByPriority, type OrderedRule } from '../../domain/ruleOrdering';
+import type { PredicateCondition, RuleField } from '../../models/ruleModel';
 import type { WorkspaceState } from '../../viewmodels/workspaceViewModel';
 import type { RulesViewModel } from './rulesViewModel';
 
@@ -7,17 +8,27 @@ interface RulesViewProps { state: WorkspaceState; viewModel: RulesViewModel }
 export function RulesView({ state, viewModel }: RulesViewProps) {
   const project = state.project;
   const rules = project?.rules ?? [];
+  const priorityGroups = groupRulesByPriority(rules);
   return (
     <section className="module-page">
       <div className="page-heading">
-        <div><span className="eyebrow">模块 02 / 决策逻辑</span><h1>规则工作台</h1><p>用字段条件描述命中路径，并为每条规则分配优先级和结果。</p></div>
+        <div><span className="eyebrow">模块 02 / 决策逻辑</span><h1>规则工作台</h1><p>用字段条件描述命中路径；列表按最终判定顺序排列，同优先级自上而下决胜。</p></div>
         <button className="button button-primary" onClick={() => viewModel.addRule()}><span>＋</span> 新建规则</button>
       </div>
       {project?.frozenVersionId && <div className="frozen-notice">◈ 当前项目已冻结。到检查与版本模块复制此版本后继续编辑。</div>}
       {project && project.fields.length === 0 && <div className="inline-issue">先到“字段定义”添加输入字段，再为规则设置条件。</div>}
       {rules.length === 0 ? <div className="empty-card card-surface"><div className="empty-icon">⌘</div><h2>规则还没有开始编织</h2><p>创建第一条规则，组合一个或多个字段条件，并填写命中结果。</p></div> : (
         <div className="rules-list">
-          {rules.map((rule, index) => <RuleCard key={rule.id} rule={rule} index={index} fields={project?.fields ?? []} selected={state.selectedRuleId === rule.id} viewModel={viewModel} />)}
+          <div className="rule-ordering-note"><b>判定顺序</b><span>优先级数字高的规则在前；优先级相同的规则形成并列组，按列表中的先后决胜。使用 ↑ / ↓ 可直接调整并列规则。</span></div>
+          {priorityGroups.map((group) => (
+            <section className={`priority-group${group.tied ? ' priority-group-tied' : ''}`} key={group.priority}>
+              <header className="priority-group-header">
+                <div><b>P{group.priority}</b><span>{group.tied ? `${group.rules.length} 条规则并列` : '独立优先级'}</span></div>
+                {group.tied && <span className="tie-direction">本组自上而下决胜 →</span>}
+              </header>
+              {group.rules.map((rule) => <RuleCard key={rule.id} rule={rule} fields={project?.fields ?? []} selected={state.selectedRuleId === rule.id} viewModel={viewModel} />)}
+            </section>
+          ))}
         </div>
       )}
       {state.validationIssues.filter((issue) => issue.ruleId).map((issue, index) => <div className="inline-issue" key={`${issue.code}-${index}`}>! {issue.message}</div>)}
@@ -25,16 +36,18 @@ export function RulesView({ state, viewModel }: RulesViewProps) {
   );
 }
 
-interface RuleCardProps { rule: BusinessRule; index: number; fields: RuleField[]; selected: boolean; viewModel: RulesViewModel }
+interface RuleCardProps { rule: OrderedRule; fields: RuleField[]; selected: boolean; viewModel: RulesViewModel }
 
-function RuleCard({ rule, index, fields, selected, viewModel }: RuleCardProps) {
+function RuleCard({ rule, fields, selected, viewModel }: RuleCardProps) {
+  const tied = (rule.tieCount ?? 1) > 1;
   const updateCondition = (conditionIndex: number, condition: PredicateCondition) => viewModel.updateCondition(rule.id, conditionIndex, condition);
   return (
-    <article data-rule-id={rule.id} className={`rule-card card-surface${selected ? ' rule-card-selected' : ''}`} onFocus={() => viewModel.selectRule(rule.id)}>
+    <article data-rule-id={rule.id} className={`rule-card card-surface${selected ? ' rule-card-selected' : ''}${tied ? ' rule-card-tied' : ''}`} onFocus={() => viewModel.selectRule(rule.id)}>
       <header className="rule-card-header">
-        <div className="rule-order">R{String(index + 1).padStart(2, '0')}</div>
-        <div className="rule-name-wrap"><input className="rule-name-input" aria-label={`规则${index + 1}名称`} value={rule.name} onChange={(event) => viewModel.updateRule(rule.id, { name: event.target.value })} /><span className="rule-meta">规则 ID · {rule.id.slice(-8)}</span></div>
-        <label className="priority-control"><span>优先级</span><input aria-label={`${rule.name}优先级`} type="number" value={rule.priority} onChange={(event) => viewModel.updateRule(rule.id, { priority: Number(event.target.value) })} /><b>↕</b></label>
+        <div className="rule-order"><span>R{String(rule.resolutionIndex + 1).padStart(2, '0')}</span>{tied && <small>并列 {Number(rule.tieIndex) + 1}/{rule.tieCount}</small>}</div>
+        <div className="rule-name-wrap"><input className="rule-name-input" aria-label={`规则${rule.resolutionIndex + 1}名称`} value={rule.name} onChange={(event) => viewModel.updateRule(rule.id, { name: event.target.value })} /><span className="rule-meta">规则 ID · {rule.id.slice(-8)}{tied && ' · 同优先级决胜'}</span></div>
+        {tied && <div className="tie-order-control"><button className="icon-button tie-button" aria-label={`将${rule.name}在同优先级中上移`} disabled={rule.tieIndex === 0} onClick={() => viewModel.moveRule(rule.id, -1)}>↑</button><button className="icon-button tie-button" aria-label={`将${rule.name}在同优先级中下移`} disabled={rule.tieIndex === Number(rule.tieCount) - 1} onClick={() => viewModel.moveRule(rule.id, 1)}>↓</button></div>}
+        <label className="priority-control"><span>优先级</span><input aria-label={`${rule.name}优先级`} type="number" value={rule.priority} onChange={(event) => viewModel.updateRule(rule.id, { priority: Number(event.target.value) })} /></label>
         <button className="icon-button danger-hover" aria-label={`删除${rule.name}`} onClick={() => viewModel.removeRule(rule.id)}>×</button>
       </header>
       <div className="condition-area">

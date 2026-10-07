@@ -8,6 +8,7 @@ import type {
   SampleInput,
 } from '../models/ruleModel';
 import { matchesRule } from './conditionEvaluator';
+import { orderRulesByResolution } from './ruleOrdering';
 
 const MAX_CASES = 120_000;
 const MAX_EXAMPLES = 4;
@@ -19,7 +20,7 @@ export function analyzeRules(project: RuleProject): RuleAnalysis {
   const visible = new Set<string>();
   const processedMatchSets = new Set<string>();
   const uncoveredExamples: SampleInput[] = [];
-  const ordered = [...project.rules].sort((a, b) => b.priority - a.priority || project.rules.indexOf(a) - project.rules.indexOf(b));
+  const ordered = orderRulesByResolution(project.rules);
   let checkedCases = 0;
   let coveredCases = 0;
   let truncated = false;
@@ -67,8 +68,8 @@ export function analyzeRules(project: RuleProject): RuleAnalysis {
   };
 
   visit(0, {});
-  const unreachableRuleIds = project.rules.filter((rule) => !seen.has(rule.id)).map((rule) => rule.id);
-  const shadowedRuleIds = project.rules.filter((rule) => seen.has(rule.id) && !visible.has(rule.id)).map((rule) => rule.id);
+  const unreachableRuleIds = ordered.filter((rule) => !seen.has(rule.id)).map((rule) => rule.id);
+  const shadowedRuleIds = ordered.filter((rule) => seen.has(rule.id) && !visible.has(rule.id)).map((rule) => rule.id);
 
   return {
     checkedCases,

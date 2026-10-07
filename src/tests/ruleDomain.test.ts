@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateSample } from '../domain/conditionEvaluator';
 import { validateField, validateProject } from '../domain/fieldValidation';
+import { moveTiedRule, orderRulesByResolution } from '../domain/ruleOrdering';
 import { analyzeRules } from '../domain/ruleAnalysis';
 import type { BusinessRule, RuleField, RuleProject } from '../models/ruleModel';
 
@@ -64,5 +65,34 @@ describe('rule consistency analysis', () => {
     expect(result.winner?.id).toBe('either');
     const missing = evaluateSample(project([rule]), { amount: 10, tier: 'gold' });
     expect(missing.errors).toEqual(['请填写“启用”']);
+  });
+});
+
+describe('rule resolution order', () => {
+  it('uses one priority and tie ordering source for samples, visibility, and direct list reordering', () => {
+    const activeTrue: BusinessRule['conditions'] = { kind: 'group', operator: 'and', conditions: [{ kind: 'predicate', fieldId: 'active', operator: 'isTrue', value: true }] };
+    const first = makeRule('first', activeTrue, 20, 'first result');
+    const blocker = makeRule('blocker', activeTrue, 30, 'blocker result');
+    const second = makeRule('second', activeTrue, 20, 'second result');
+    const initial = project([first, blocker, second], [active]);
+
+    const ordered = orderRulesByResolution(initial.rules).map((rule) => rule.id);
+    expect(ordered).toEqual(['blocker', 'first', 'second']);
+    expect(orderRulesByResolution(initial.rules)[1]).toMatchObject({ id: 'first', resolutionIndex: 1, tieIndex: 0, tieCount: 2 });
+
+    const sample = evaluateSample(initial, { active: true });
+    expect(sample.matchedRules.map((rule) => rule.id)).toEqual(['blocker', 'first', 'second']);
+    expect(sample.winner?.id).toBe('blocker');
+
+    const analysis = analyzeRules(initial);
+    const overlap = analysis.overlaps.find((item) => item.ruleAId === 'first' && item.ruleBId === 'second');
+    expect(overlap).toMatchObject({ conflict: true });
+    expect(analysis.shadowedRuleIds).toEqual(['first', 'second']);
+
+    const reorderedRules = moveTiedRule(initial.rules, 'first', 1);
+    expect(reorderedRules.map((rule) => rule.id)).toEqual(['second', 'blocker', 'first']);
+    const reordered = project(reorderedRules, [active]);
+    expect(evaluateSample(reordered, { active: true }).matchedRules.map((rule) => rule.id)).toEqual(['blocker', 'second', 'first']);
+    expect(analyzeRules(reordered).overlaps.find((item) => item.ruleAId === 'second' && item.ruleBId === 'first')?.conflict).toBe(true);
   });
 });

@@ -10,7 +10,11 @@ class MemoryRepository {
 }
 
 class FakeChecker {
-  run() { return { promise: Promise.resolve({ checkedCases: 1, coveredCases: 1, coveragePercent: 100, overlaps: [], unreachableRuleIds: [], shadowedRuleIds: [], uncoveredExamples: [], truncated: false }), cancel() {} }; }
+  calls = 0;
+  run() {
+    this.calls += 1;
+    return { promise: Promise.resolve({ checkedCases: 1, coveredCases: 1, coveragePercent: 100, overlaps: [], unreachableRuleIds: [], shadowedRuleIds: [], uncoveredExamples: [], truncated: false }), cancel() {} };
+  }
 }
 
 describe('feature ViewModels', () => {
@@ -32,6 +36,23 @@ describe('feature ViewModels', () => {
     if (boolField) samples.setValue(boolField.id, true);
     samples.evaluate();
     expect(workspace.getSnapshot().sampleEvaluation?.valid).toBe(true);
+    workspace.dispose();
+  });
+
+  it('reorders tied rules and immediately applies the same order to sample evaluation', async () => {
+    const workspace = new RuleWorkspaceViewModel(new MemoryRepository(), new FakeChecker());
+    await workspace.start();
+    const rules = new RulesViewModel(workspace);
+
+    expect(workspace.getSnapshot().sampleEvaluation?.matchedRules.map((rule) => rule.id)).toEqual(['rule-gold-discount', 'rule-coupon-discount']);
+    rules.moveRule('rule-gold-discount', 1);
+    expect(workspace.getSnapshot().project?.rules.map((rule) => rule.id)).toEqual([
+      'rule-coupon-discount',
+      'rule-gold-discount',
+      'rule-gold-hidden',
+      'rule-out-of-range',
+    ]);
+    expect(workspace.getSnapshot().sampleEvaluation?.matchedRules.map((rule) => rule.id)).toEqual(['rule-coupon-discount', 'rule-gold-discount']);
     workspace.dispose();
   });
 });

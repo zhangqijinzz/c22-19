@@ -1,3 +1,4 @@
+import { compareRulesByResolution } from './ruleOrdering';
 import type {
   BusinessRule,
   ConditionGroup,
@@ -59,7 +60,7 @@ export function evaluateSample(project: RuleProject, values: SampleInput): Sampl
   if (errors.length) return { valid: false, errors, matchedRules: [] };
   const matchedRules = project.rules
     .filter((rule) => matchesRule(rule, values))
-    .sort((a, b) => b.priority - a.priority || project.rules.indexOf(a) - project.rules.indexOf(b));
+    .sort((left, right) => compareRulesByResolution(left, right, project.rules));
   return { valid: true, errors: [], matchedRules, winner: matchedRules[0] };
 }
 
