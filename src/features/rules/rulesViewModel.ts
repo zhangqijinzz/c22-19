@@ -1,3 +1,4 @@
+import { rankRules } from '../../domain/ruleOrder';
 import type { BusinessRule, ConditionGroup, PredicateCondition, RuleField, RuleProject } from '../../models/ruleModel';
 import type { WorkspacePort } from '../../viewmodels/workspacePort';
 
@@ -21,6 +22,32 @@ export class RulesViewModel {
 
   updateRule(ruleId: string, updates: Partial<Pick<BusinessRule, 'name' | 'priority' | 'result'>>): void {
     this.updateRules((rule) => rule.id === ruleId ? { ...rule, ...updates } : rule, `${this.findName(ruleId)}已更新`);
+  }
+
+  /**
+   * 在决胜顺序中与相邻规则交换位置。
+   * 同优先级时只交换列表顺序（改变并列决胜先后）；
+   * 跨优先级时同步采用目标的优先级，使“排到它前/后面”立即生效。
+   */
+  moveRule(ruleId: string, direction: 'up' | 'down'): void {
+    const project = this.currentProject();
+    if (!project) return;
+    const ranked = rankRules(project.rules);
+    const rankIndex = ranked.findIndex((entry) => entry.rule.id === ruleId);
+    const targetIndex = direction === 'up' ? rankIndex - 1 : rankIndex + 1;
+    if (rankIndex < 0 || targetIndex < 0 || targetIndex >= ranked.length) return;
+    const moving = ranked[rankIndex].rule;
+    const target = ranked[targetIndex].rule;
+    const adoptsPriority = moving.priority !== target.priority;
+    const moved = adoptsPriority ? { ...moving, priority: target.priority } : moving;
+    const rules = project.rules.filter((rule) => rule.id !== moving.id);
+    const targetListIndex = rules.findIndex((rule) => rule.id === target.id);
+    rules.splice(direction === 'up' ? targetListIndex : targetListIndex + 1, 0, moved);
+    const position = direction === 'up' ? '之前' : '之后';
+    const notice = adoptsPriority
+      ? `已将${moving.name || '规则'}移到「${target.name || '规则'}」${position}，优先级同步调整为 ${target.priority}`
+      : `已将${moving.name || '规则'}移到「${target.name || '规则'}」${position}`;
+    this.workspace.commitProject({ ...project, rules }, notice);
   }
 
   removeRule(ruleId: string): void {

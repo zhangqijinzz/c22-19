@@ -9,6 +9,8 @@ export function SamplesView({ state, viewModel }: SamplesViewProps) {
   const evaluation = state.sampleEvaluation;
   const fields = project?.fields ?? [];
   const rules = project?.rules ?? [];
+  const matchedPriorityCounts = new Map<number, number>();
+  for (const rule of evaluation?.matchedRules ?? []) matchedPriorityCounts.set(rule.priority, (matchedPriorityCounts.get(rule.priority) ?? 0) + 1);
   return (
     <section className="module-page">
       <div className="page-heading"><div><span className="eyebrow">模块 03 / 输入推演</span><h1>样例试验区</h1><p>输入一组具体值，观察所有命中规则及最终采用的结果。</p></div><button className="button button-primary" disabled={!fields.length || !rules.length} onClick={() => viewModel.evaluate()}>运行样例 <span>↗</span></button></div>
@@ -25,9 +27,9 @@ export function SamplesView({ state, viewModel }: SamplesViewProps) {
           {evaluation && !evaluation.valid ? <div className="sample-errors"><strong>输入需要补全</strong>{evaluation.errors.map((error) => <p key={error}>! {error}</p>)}</div> : evaluation?.matchedRules.length ? <>
             <div className="winner-result"><div className="winner-label"><span>最终结果</span><b>优先级 {evaluation.winner?.priority}</b></div><strong>{evaluation.winner?.result || '此规则尚未填写结果'}</strong><span className="winner-rule">由 {evaluation.winner?.name} 命中</span></div>
             <div className="trace-heading"><span>匹配顺序</span><span>{evaluation.matchedRules.length} 条规则命中</span></div>
-            <ol className="match-trace">{evaluation.matchedRules.map((rule, index) => <li className={index === 0 ? 'trace-winner' : ''} key={rule.id}><span className="trace-dot">{index === 0 ? '✓' : index + 1}</span><div><strong>{rule.name}</strong><span>{rule.result || '未填写结果'}</span></div><b>P{rule.priority}</b></li>)}</ol>
+            <ol className="match-trace">{evaluation.matchedRules.map((rule, index) => <li className={index === 0 ? 'trace-winner' : ''} key={rule.id}><span className="trace-dot">{index === 0 ? '✓' : index + 1}</span><div><strong>{rule.name}</strong><span>{rule.result || '未填写结果'}</span></div>{(matchedPriorityCounts.get(rule.priority) ?? 0) > 1 && <em className="trace-tie">并列</em>}<b>P{rule.priority}</b></li>)}</ol>
           </> : <div className="no-match-state"><div>∅</div><strong>没有规则命中</strong><p>这组输入落在当前规则集合未覆盖的区域。</p></div>}
-          {evaluation?.valid && evaluation.matchedRules.length > 1 && <div className="trace-note">多条规则同时命中。优先级最高者作为最终结果，同优先级按列表顺序决胜。</div>}
+          {evaluation?.valid && evaluation.matchedRules.length > 1 && <div className="trace-note">多条规则同时命中。匹配顺序与规则工作台的决胜顺序一致：优先级高者在前，同优先级按列表先后决胜，第一位作为最终结果。</div>}
         </section>
       </div>
     </section>

@@ -8,6 +8,7 @@ import type {
   SampleEvaluation,
   SampleInput,
 } from '../models/ruleModel';
+import { orderRules } from './ruleOrder';
 
 export function matchesCondition(condition: RuleCondition, values: SampleInput): boolean {
   if (condition.kind === 'group') {
@@ -57,9 +58,7 @@ export function evaluateSample(project: RuleProject, values: SampleInput): Sampl
     if (field.type === 'boolean' && typeof value !== 'boolean') errors.push(`“${field.name}”需要选择是或否`);
   }
   if (errors.length) return { valid: false, errors, matchedRules: [] };
-  const matchedRules = project.rules
-    .filter((rule) => matchesRule(rule, values))
-    .sort((a, b) => b.priority - a.priority || project.rules.indexOf(a) - project.rules.indexOf(b));
+  const matchedRules = orderRules(project.rules).filter((rule) => matchesRule(rule, values));
   return { valid: true, errors: [], matchedRules, winner: matchedRules[0] };
 }
 
